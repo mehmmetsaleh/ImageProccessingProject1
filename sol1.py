@@ -1,6 +1,7 @@
 import numpy as np
 import skimage.color as sk
 import imageio as io
+import matplotlib.pyplot as plt
 
 
 def read_image(filename, representation):
@@ -22,8 +23,10 @@ def read_image(filename, representation):
         return im_float
 
 
-
-
+def imdisplay(filename, representation):
+    im = read_image(filename,representation)
+    plt.imshow(im,cmap="gray")
+    plt.show()
 
 if __name__ == '__main__':
-    read_image("image.jpeg", 1)
+    imdisplay("image.jpeg",1)
