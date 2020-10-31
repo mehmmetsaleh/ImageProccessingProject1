@@ -53,10 +53,35 @@ def yiq2rgb(imYIQ):
     return rgb_mat
 
 
+def histogram_equalize(im_orig):
+    # gray-scale image
+    if len(im_orig.shape) < 3:
+        im_orig *= 255
+        im_orig = im_orig.astype(np.int64)
+        hist_orig, bins = np.histogram(im_orig, 256, [0, 256])
+        cum_hist = np.cumsum(hist_orig)
+        # normalizing
+        cum_hist = cum_hist/(im_orig.shape[0]*im_orig.shape[1])
+        cum_hist = cum_hist * 255
+        print(cum_hist)
+
+
+
+
+
+
+        # for plotting
+        # plt.hist(hist_orig, 256, [0, 256])
+        # plt.title("histogram")
+        # plt.show()
+        ###############
+
 if __name__ == '__main__':
     # imdisplay("12.jpg",2)
-    x = read_image("image.jpeg", 2)
-    y = rgb2yiq(x)
+    x = read_image("image.jpeg", 1)
+
+    # y = rgb2yiq(x)
     # print(y)
-    w = yiq2rgb(y)
+    # w = yiq2rgb(y)
     # print(w)
+    histogram_equalize(x)
