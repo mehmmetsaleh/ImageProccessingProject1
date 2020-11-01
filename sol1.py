@@ -53,35 +53,71 @@ def yiq2rgb(imYIQ):
     return rgb_mat
 
 
+def linear_strech(cum_hist):
+    tk = np.empty(cum_hist.shape)
+    cm = cum_hist.min()
+    c255 = cum_hist.max()
+    for i in range(len(cum_hist)):
+        tk[i] = 255 * (cum_hist[i] - cm) / (c255 - cm)
+    return tk.astype(np.int64)
+
+
+def check_strech(norm_cum_hist, cum_hist):
+    if norm_cum_hist.min() != 0 or norm_cum_hist.max() != 255:
+        return linear_strech(cum_hist)
+    else:
+        return norm_cum_hist
+
+
 def histogram_equalize(im_orig):
-    # gray-scale image
-    if len(im_orig.shape) < 3:
+    if len(im_orig.shape) == 2:
+        # gray-scale image
         im_orig *= 255
         im_orig = im_orig.astype(np.int64)
         hist_orig, bins = np.histogram(im_orig, 256, [0, 256])
         cum_hist = np.cumsum(hist_orig)
-        # normalizing
-        cum_hist = cum_hist/(im_orig.shape[0]*im_orig.shape[1])
-        cum_hist = cum_hist * 255
-        print(cum_hist)
+        h, w = im_orig.shape  # normalizing
+        norm_cum_hist = 255 * cum_hist / (h * w)
+        Tk = check_strech(norm_cum_hist, cum_hist)
 
+        new_img_1d = im_orig.flatten()
+        for i in range(len(new_img_1d)):
+            new_img_1d[i] = Tk[new_img_1d[i]]
+        eq_hist, bins = np.histogram(new_img_1d, 256, [0, 256])
+        new_img = new_img_1d.reshape(h, w)
+        return new_img/255, hist_orig, eq_hist
 
-
-
-
-
-        # for plotting
-        # plt.hist(hist_orig, 256, [0, 256])
-        # plt.title("histogram")
-        # plt.show()
-        ###############
+    elif len(im_orig.shape) == 3:
+        yiq_im = rgb2yiq(im_orig)
+        y_channel = yiq_im[:, :, 0]
+        equal_img, hist_orig, hist_new = histogram_equalize(y_channel)
+        yiq_im[:, :, 0] = equal_img
+        rgb_img = yiq2rgb(yiq_im)
+        return rgb_img, hist_orig, hist_new
+    else:
+        return None, None, None
 
 if __name__ == '__main__':
     # imdisplay("12.jpg",2)
-    x = read_image("image.jpeg", 1)
+    x = read_image("image.jpeg", 2)
 
     # y = rgb2yiq(x)
     # print(y)
     # w = yiq2rgb(y)
     # print(w)
-    histogram_equalize(x)
+    eq_img, org_hist, new_hist = histogram_equalize(x)
+
+    plt.subplot(2, 2, 1)
+    plt.imshow(x, cmap="gray")
+
+    plt.subplot(2, 2, 2)
+    plt.imshow(eq_img, cmap="gray")
+
+    plt.subplot(2, 2, 3)
+    plt.bar(range(0, 256), org_hist)
+    plt.title("prev histogram")
+
+    plt.subplot(2, 2, 4)
+    plt.bar(range(0, 256), new_hist)
+    plt.title("new histogram")
+    plt.show()
