@@ -85,7 +85,7 @@ def histogram_equalize(im_orig):
             new_img_1d[i] = Tk[new_img_1d[i]]
         eq_hist, bins = np.histogram(new_img_1d, 256, [0, 256])
         new_img = new_img_1d.reshape(h, w)
-        return new_img/255, hist_orig, eq_hist
+        return new_img / 255, hist_orig, eq_hist
 
     elif len(im_orig.shape) == 3:
         yiq_im = rgb2yiq(im_orig)
@@ -97,27 +97,83 @@ def histogram_equalize(im_orig):
     else:
         return None, None, None
 
+
+def init_z(n_quant):
+    z = np.empty((n_quant + 1,), dtype=np.int64)
+    z[0] = 0
+    z[n_quant] = 255
+    bin_width = 256 // n_quant
+    for i in range(1, n_quant):
+        z[i] = z[i - 1] + bin_width
+    return z
+
+
+def update_q(z, q, n_quant, hist):
+    numerator = 0
+    denominator = 0
+    for i in range(n_quant):
+        for g in range(z[i] + 1, z[i + 1] + 1):
+            numerator += g * hist[g]
+            denominator += hist[g]
+        q[i] = numerator // denominator
+    return q
+
+
+def update_z(z, q):
+    for i in range(1, len(z) - 1):
+        z[i] = (q[i - 1] + q[i]) // 2
+    return z
+
+
+def calculate_error(k, z, q, hist):
+    total_err = 0
+    for i in range(k):
+        err_per_interval = 0
+        for g in range(z[i] + 1, z[i + 1]):
+            error_pp_squared = (q[i] - g) ** 2
+            err_per_interval += error_pp_squared * hist[g]
+        total_err += err_per_interval
+    return total_err
+
+
+def quantize(im_orig, n_quant, n_iter):
+    z = init_z(n_quant)
+    q = np.empty((n_quant,), dtype=np.int64)
+
+    if len(im_orig.shape) == 2:
+        # gray-scale image
+        im_orig *= 255
+        im_orig = im_orig.astype(np.int64)
+        hist_orig, bins = np.histogram(im_orig, 256, [0, 256])
+        q = update_q(z, q, n_quant, hist_orig)
+        z = update_z(z, q)
+        print(z.shape)
+        err = calculate_error(256, z, q, hist_orig)
+        print(err)
+
+
 if __name__ == '__main__':
     # imdisplay("12.jpg",2)
-    x = read_image("image.jpeg", 2)
+    x = read_image("image.jpeg", 1)
 
     # y = rgb2yiq(x)
     # print(y)
     # w = yiq2rgb(y)
     # print(w)
-    eq_img, org_hist, new_hist = histogram_equalize(x)
+    # eq_img, org_hist, new_hist = histogram_equalize(x)
 
-    plt.subplot(2, 2, 1)
-    plt.imshow(x, cmap="gray")
-
-    plt.subplot(2, 2, 2)
-    plt.imshow(eq_img, cmap="gray")
-
-    plt.subplot(2, 2, 3)
-    plt.bar(range(0, 256), org_hist)
-    plt.title("prev histogram")
-
-    plt.subplot(2, 2, 4)
-    plt.bar(range(0, 256), new_hist)
-    plt.title("new histogram")
-    plt.show()
+    # plt.subplot(2, 2, 1)
+    # plt.imshow(x, cmap="gray")
+    #
+    # plt.subplot(2, 2, 2)
+    # plt.imshow(eq_img, cmap="gray")
+    #
+    # plt.subplot(2, 2, 3)
+    # plt.bar(range(0, 256), org_hist)
+    # plt.title("prev histogram")
+    #
+    # plt.subplot(2, 2, 4)
+    # plt.bar(range(0, 256), new_hist)
+    # plt.title("new histogram")
+    # plt.show()
+    quantize(x, 32, 2)
