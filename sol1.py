@@ -98,24 +98,15 @@ def histogram_equalize(im_orig):
         return None, None, None
 
 
-def init_z(n_quant):
-    z = np.empty((n_quant + 1,), dtype=np.int64)
-    z[0] = 0
-    z[n_quant] = 255
-    bin_width = 256 // n_quant
-    for i in range(1, n_quant):
-        z[i] = z[i - 1] + bin_width
-    return z
-
-
-def update_q(z, q, n_quant, hist):
-    numerator = 0
-    denominator = 0
-    for i in range(n_quant):
-        for g in range(z[i] + 1, z[i + 1] + 1):
+def update_q(z, q, hist):
+    for i in range(len(q)):
+        numerator = 0
+        denominator = 0
+        for g in range(z[i] + 1, z[i + 1]+1):
             numerator += g * hist[g]
             denominator += hist[g]
-        q[i] = numerator // denominator
+        if denominator != 0:
+            q[i] = numerator // denominator
     return q
 
 
@@ -128,28 +119,62 @@ def update_z(z, q):
 def calculate_error(k, z, q, hist):
     total_err = 0
     for i in range(k):
-        err_per_interval = 0
-        for g in range(z[i] + 1, z[i + 1]):
-            error_pp_squared = (q[i] - g) ** 2
-            err_per_interval += error_pp_squared * hist[g]
-        total_err += err_per_interval
+        for g in range(z[i] + 1, z[i + 1]+1):
+            total_err += hist[g] * ((q[i] - g) ** 2)
     return total_err
 
 
 def quantize(im_orig, n_quant, n_iter):
-    z = init_z(n_quant)
-    q = np.empty((n_quant,), dtype=np.int64)
+    z = np.linspace(0, 255, num=n_quant+1).astype(np.int64)
+    print(z)
+    q = np.zeros((n_quant,), dtype=np.int64)
+    print(q)
 
     if len(im_orig.shape) == 2:
         # gray-scale image
         im_orig *= 255
         im_orig = im_orig.astype(np.int64)
         hist_orig, bins = np.histogram(im_orig, 256, [0, 256])
-        q = update_q(z, q, n_quant, hist_orig)
-        z = update_z(z, q)
-        print(z.shape)
-        err = calculate_error(256, z, q, hist_orig)
-        print(err)
+        # plt.bar(range(0, 256), hist_orig)
+        # plt.show()
+        q = update_q(z, q, hist_orig)
+        # print(q)
+        # exit(0)
+
+        errors = []
+        old_err = -1
+        for i in range(n_iter):
+
+            # print(err)
+            z = update_z(z, q)
+            q = update_q(z, q, hist_orig)
+
+            err = calculate_error(n_quant, z, q, hist_orig)
+            errors.append(err)
+
+            if err == old_err:
+                break
+            old_err = err
+        # plt.plot(errors)
+        # plt.show()
+        print(errors)
+
+        transform = np.zeros((255,))
+        for i in range(0, n_quant):
+            transform[z[i]:z[i+1]] = q[i]
+
+        flat_img = im_orig.flatten()
+        for i in range(0, 255):
+            flat_img[flat_img == i] = transform[i]
+        new_im = flat_img.reshape(im_orig.shape)
+        plt.imshow(new_im, cmap="gray")
+        plt.show()
+        return [new_im/255.0, errors]
+
+
+        # print(transform)
+        # print(len(np.unique(transform)))
+
 
 
 if __name__ == '__main__':
@@ -176,4 +201,6 @@ if __name__ == '__main__':
     # plt.bar(range(0, 256), new_hist)
     # plt.title("new histogram")
     # plt.show()
-    quantize(x, 32, 2)
+    x = np.hstack([np.repeat(np.arange(0, 50, 2), 10)[None, :], np.array([255] * 6)[None, :]])
+    grad = np.tile(x, (256, 1))
+    quantize(grad/255, 32, 10000)
