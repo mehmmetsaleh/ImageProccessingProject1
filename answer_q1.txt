@@ -1,0 +1,7 @@
+
+Because some of the intervals (z[i],z[i+1]) might be empty
+(doesn't contain any gray-scale level in the image) and as a
+result we get division by zero exception.
+The solution to this problem is to carefully choose z[i] such
+that each interval contains (approximately) the same number of pixels.
+
