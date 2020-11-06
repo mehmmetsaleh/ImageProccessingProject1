@@ -8,6 +8,8 @@ rgb2yiq_mat = np.array(rgb2yiq)
 inv_mat = np.linalg.inv(rgb2yiq_mat)
 
 
+# this function reads the image from the given path
+# in the wanted representation (1 for gray-scale,2 for RGB)
 def read_image(filename, representation):
     im = io.imread(filename)
     im_float = im.astype(np.float64)
@@ -20,12 +22,14 @@ def read_image(filename, representation):
         return im_float
 
 
+# this function displays the image to the user
 def imdisplay(filename, representation):
     im = read_image(filename, representation)
     plt.imshow(im, cmap="gray")
     plt.show()
 
 
+# this function converts rgb image into yiq image
 def rgb2yiq(imRGB):
     # empty matrix of size imRGB
     yiq_mat = np.empty(imRGB.shape)
@@ -35,6 +39,7 @@ def rgb2yiq(imRGB):
     return yiq_mat
 
 
+# this function converts yiq image to rgb image
 def yiq2rgb(imYIQ):
     rgb_mat = np.empty(imYIQ.shape)
     rgb_mat[:, :, 0] = inv_mat[0][0] * imYIQ[:, :, 0] + inv_mat[0][1] * imYIQ[:, :, 1] + inv_mat[0][
@@ -46,6 +51,7 @@ def yiq2rgb(imYIQ):
     return rgb_mat
 
 
+# this function performs stretches to the histogram when needed
 def linear_stretch(cum_hist):
     tk = np.empty(cum_hist.shape)
     cm = cum_hist.min()
@@ -55,6 +61,7 @@ def linear_stretch(cum_hist):
     return tk.astype(np.int64)
 
 
+# this function checks if a stretch is need to be performed
 def check_stretch(norm_cum_hist, cum_hist):
     if norm_cum_hist.min() != 0 or norm_cum_hist.max() != 255:
         return linear_stretch(cum_hist)
@@ -62,9 +69,13 @@ def check_stretch(norm_cum_hist, cum_hist):
         return norm_cum_hist
 
 
-def histogram_equalize(im_orig):
-    if len(im_orig.shape) == 2:
+# this function applies the histogram_equalize algorithm on the given
+# image
+# returns (equalized image,original histogram,equalized histogram)
+def histogram_equalize(im):
+    if len(im.shape) == 2:
         # gray-scale image
+        im_orig = np.copy(im)
         im_orig *= 255
         im_orig = im_orig.astype(np.int64)
         hist_orig, bins = np.histogram(im_orig, 256, [0, 256])
@@ -79,8 +90,8 @@ def histogram_equalize(im_orig):
         new_img = new_img_1d.reshape(h, w)
         return new_img / 255, hist_orig, eq_hist
 
-    elif len(im_orig.shape) == 3:
-        yiq_im = rgb2yiq(im_orig)
+    elif len(im.shape) == 3:
+        yiq_im = rgb2yiq(im)
         y_channel = yiq_im[:, :, 0]
         equal_img, hist_orig, hist_new = histogram_equalize(y_channel)
         yiq_im[:, :, 0] = equal_img
@@ -90,6 +101,7 @@ def histogram_equalize(im_orig):
         return None, None, None
 
 
+# this function updates the q intensites array used in quantize() function
 def update_q(z, q, hist):
     for i in range(len(q)):
         numerator = 0
@@ -101,12 +113,14 @@ def update_q(z, q, hist):
     return q.astype(int)
 
 
+# this function updates the z array used in quantize() function
 def update_z(z, q):
     for i in range(1, len(q)):
         z[i] = (q[i - 1] + q[i]) // 2
     return z.astype(int)
 
 
+# this function calculates the quantization error of a certain image
 def calculate_error(k, z, q, hist):
     total_err = 0
     for i in range(k):
@@ -115,6 +129,7 @@ def calculate_error(k, z, q, hist):
     return total_err
 
 
+# this function initializes the z array used in quantize() function
 def init_z(n_quant, hist):
     z = np.zeros((n_quant + 1,))
     z[0] = -1
@@ -128,9 +143,12 @@ def init_z(n_quant, hist):
     return z.astype(int)
 
 
-def quantize(im_orig, n_quant, n_iter):
-    if len(im_orig.shape) == 2:
+# this function perform optimal quantization on the given image
+# returns [quantized_image, error array]
+def quantize(im, n_quant, n_iter):
+    if len(im.shape) == 2:
         # gray-scale image
+        im_orig = np.copy(im)
         im_orig *= 255
         im_orig = im_orig.astype(np.int64)
         hist_orig, bins = np.histogram(im_orig, 256, [0, 256])
@@ -152,10 +170,10 @@ def quantize(im_orig, n_quant, n_iter):
         for i in range(n_quant):
             flat_img[(flat_img > z[i]) & (flat_img <= z[i + 1])] = q[i]
         new_im = flat_img.reshape(im_orig.shape)
-        return [new_im / 255.0, errors]
+        return [new_im / 255, errors]
 
-    elif len(im_orig.shape) == 3:
-        yiq_im = rgb2yiq(im_orig)
+    elif len(im.shape) == 3:
+        yiq_im = rgb2yiq(im)
         y_channel = yiq_im[:, :, 0]
         res = quantize(y_channel, n_quant, n_iter)
         yiq_im[:, :, 0] = res[0]
@@ -163,32 +181,3 @@ def quantize(im_orig, n_quant, n_iter):
         return [rgb_img, res[1]]
     else:
         return None
-
-
-# if __name__ == '__main__':
-#     x = read_image("image.jpeg", 1)
-#
-#     # y = rgb2yiq(x)
-#     # print(y)
-#     # w = yiq2rgb(y)
-#     # print(w)
-#     # eq_img, org_hist, new_hist = histogram_equalize(x)
-#
-#     # plt.subplot(2, 2, 1)
-#     # plt.imshow(x, cmap="gray")
-#     #
-#     # plt.subplot(2, 2, 2)
-#     # plt.imshow(eq_img, cmap="gray")
-#     #
-#     # plt.subplot(2, 2, 3)
-#     # plt.bar(range(0, 256), org_hist)
-#     # plt.title("prev histogram")
-#     #
-#     # plt.subplot(2, 2, 4)
-#     # plt.bar(range(0, 256), new_hist)
-#     # plt.title("new histogram")
-#     # plt.show()
-#
-#     m = quantize(x, 10, 1000)
-#     plt.imshow(m[0], cmap='gray')
-#     plt.show()
