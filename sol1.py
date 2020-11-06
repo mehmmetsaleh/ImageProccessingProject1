@@ -15,15 +15,8 @@ def read_image(filename, representation):
 
     if representation == 1:
         im_g = sk.rgb2gray(im_float)
-        # print(im_g)
-        # print(im_g.shape)
-        # print(im_g.dtype)
         return im_g
-
     elif representation == 2:
-        # print(im_float)
-        # print(im_float.shape)
-        # print(im_float.dtype)
         return im_float
 
 
@@ -53,7 +46,7 @@ def yiq2rgb(imYIQ):
     return rgb_mat
 
 
-def linear_strech(cum_hist):
+def linear_stretch(cum_hist):
     tk = np.empty(cum_hist.shape)
     cm = cum_hist.min()
     c255 = cum_hist.max()
@@ -62,9 +55,9 @@ def linear_strech(cum_hist):
     return tk.astype(np.int64)
 
 
-def check_strech(norm_cum_hist, cum_hist):
+def check_stretch(norm_cum_hist, cum_hist):
     if norm_cum_hist.min() != 0 or norm_cum_hist.max() != 255:
-        return linear_strech(cum_hist)
+        return linear_stretch(cum_hist)
     else:
         return norm_cum_hist
 
@@ -78,11 +71,10 @@ def histogram_equalize(im_orig):
         cum_hist = np.cumsum(hist_orig)
         h, w = im_orig.shape  # normalizing
         norm_cum_hist = 255 * cum_hist / (h * w)
-        Tk = check_strech(norm_cum_hist, cum_hist)
+        Tk = check_stretch(norm_cum_hist, cum_hist)
 
         new_img_1d = im_orig.flatten()
-        for i in range(len(new_img_1d)):
-            new_img_1d[i] = Tk[new_img_1d[i]]
+        new_img_1d = np.apply_along_axis(lambda i: Tk[i], 0, new_img_1d)
         eq_hist, bins = np.histogram(new_img_1d, 256, [0, 256])
         new_img = new_img_1d.reshape(h, w)
         return new_img / 255, hist_orig, eq_hist
@@ -102,105 +94,101 @@ def update_q(z, q, hist):
     for i in range(len(q)):
         numerator = 0
         denominator = 0
-        for g in range(z[i] + 1, z[i + 1]+1):
+        for g in range(z[i] + 1, z[i + 1] + 1):
             numerator += g * hist[g]
             denominator += hist[g]
-        if denominator != 0:
-            q[i] = numerator // denominator
-    return q
+        q[i] = numerator // denominator
+    return q.astype(int)
 
 
 def update_z(z, q):
-    for i in range(1, len(z) - 1):
+    for i in range(1, len(q)):
         z[i] = (q[i - 1] + q[i]) // 2
-    return z
+    return z.astype(int)
 
 
 def calculate_error(k, z, q, hist):
     total_err = 0
     for i in range(k):
-        for g in range(z[i] + 1, z[i + 1]+1):
+        for g in range(z[i] + 1, z[i + 1] + 1):
             total_err += hist[g] * ((q[i] - g) ** 2)
     return total_err
 
 
-def quantize(im_orig, n_quant, n_iter):
-    z = np.linspace(0, 255, num=n_quant+1).astype(np.int64)
-    print(z)
-    q = np.zeros((n_quant,), dtype=np.int64)
-    print(q)
+def init_z(n_quant, hist):
+    z = np.zeros((n_quant + 1,))
+    z[0] = -1
+    z[n_quant] = 255
+    cum_hist = np.cumsum(hist)
+    n_pixels_interval = cum_hist[255] // n_quant
+    pos = 0
+    for i in range(1, len(z) - 1):
+        pos += n_pixels_interval
+        z[i] = np.searchsorted(cum_hist, pos, side='right')
+    return z.astype(int)
 
+
+def quantize(im_orig, n_quant, n_iter):
     if len(im_orig.shape) == 2:
         # gray-scale image
         im_orig *= 255
         im_orig = im_orig.astype(np.int64)
         hist_orig, bins = np.histogram(im_orig, 256, [0, 256])
-        # plt.bar(range(0, 256), hist_orig)
-        # plt.show()
+        z = init_z(n_quant, hist_orig)
+        q = np.zeros((n_quant,), dtype=np.int64)
         q = update_q(z, q, hist_orig)
-        # print(q)
-        # exit(0)
 
         errors = []
         old_err = -1
         for i in range(n_iter):
-
-            # print(err)
-            z = update_z(z, q)
-            q = update_q(z, q, hist_orig)
-
             err = calculate_error(n_quant, z, q, hist_orig)
             errors.append(err)
-
+            z = update_z(z, q)
+            q = update_q(z, q, hist_orig)
             if err == old_err:
                 break
             old_err = err
-        # plt.plot(errors)
-        # plt.show()
-        print(errors)
-
-        transform = np.zeros((255,))
-        for i in range(0, n_quant):
-            transform[z[i]:z[i+1]] = q[i]
-
         flat_img = im_orig.flatten()
-        for i in range(0, 255):
-            flat_img[flat_img == i] = transform[i]
+        for i in range(n_quant):
+            flat_img[(flat_img > z[i]) & (flat_img <= z[i + 1])] = q[i]
         new_im = flat_img.reshape(im_orig.shape)
-        plt.imshow(new_im, cmap="gray")
-        plt.show()
-        return [new_im/255.0, errors]
+        return [new_im / 255.0, errors]
+
+    elif len(im_orig.shape) == 3:
+        yiq_im = rgb2yiq(im_orig)
+        y_channel = yiq_im[:, :, 0]
+        res = quantize(y_channel, n_quant, n_iter)
+        yiq_im[:, :, 0] = res[0]
+        rgb_img = yiq2rgb(yiq_im)
+        return [rgb_img, res[1]]
+    else:
+        return None
 
 
-        # print(transform)
-        # print(len(np.unique(transform)))
-
-
-
-if __name__ == '__main__':
-    # imdisplay("12.jpg",2)
-    x = read_image("image.jpeg", 1)
-
-    # y = rgb2yiq(x)
-    # print(y)
-    # w = yiq2rgb(y)
-    # print(w)
-    # eq_img, org_hist, new_hist = histogram_equalize(x)
-
-    # plt.subplot(2, 2, 1)
-    # plt.imshow(x, cmap="gray")
-    #
-    # plt.subplot(2, 2, 2)
-    # plt.imshow(eq_img, cmap="gray")
-    #
-    # plt.subplot(2, 2, 3)
-    # plt.bar(range(0, 256), org_hist)
-    # plt.title("prev histogram")
-    #
-    # plt.subplot(2, 2, 4)
-    # plt.bar(range(0, 256), new_hist)
-    # plt.title("new histogram")
-    # plt.show()
-    x = np.hstack([np.repeat(np.arange(0, 50, 2), 10)[None, :], np.array([255] * 6)[None, :]])
-    grad = np.tile(x, (256, 1))
-    quantize(grad/255, 32, 10000)
+# if __name__ == '__main__':
+#     x = read_image("image.jpeg", 1)
+#
+#     # y = rgb2yiq(x)
+#     # print(y)
+#     # w = yiq2rgb(y)
+#     # print(w)
+#     # eq_img, org_hist, new_hist = histogram_equalize(x)
+#
+#     # plt.subplot(2, 2, 1)
+#     # plt.imshow(x, cmap="gray")
+#     #
+#     # plt.subplot(2, 2, 2)
+#     # plt.imshow(eq_img, cmap="gray")
+#     #
+#     # plt.subplot(2, 2, 3)
+#     # plt.bar(range(0, 256), org_hist)
+#     # plt.title("prev histogram")
+#     #
+#     # plt.subplot(2, 2, 4)
+#     # plt.bar(range(0, 256), new_hist)
+#     # plt.title("new histogram")
+#     # plt.show()
+#
+#     m = quantize(x, 10, 1000)
+#     plt.imshow(m[0], cmap='gray')
+#     plt.show()
